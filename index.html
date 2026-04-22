@@ -721,7 +721,7 @@ function convert() {
     if (mode === 'wb') {
       const hit = mapWBtoGene[key];
       if (hit) { results.push(hit); nMatch++; }
-      else { results.push(`[NOT FOUND: ${line}]`); nMiss++; unmatched.push(line); }
+      //else { results.push(`[NOT FOUND: ${line}]`); nMiss++; unmatched.push(line); }
     } else {
       const hitPub = mapPubToWB[key];
       if (hitPub) {
@@ -729,7 +729,7 @@ function convert() {
       } else {
         const hitSeq = mapSeqToWB[key];
         if (hitSeq) { results.push(hitSeq); nFall++; }
-        else { results.push(`[NOT FOUND: ${line}]`); nMiss++; unmatched.push(line); }
+        //else { results.push(`[NOT FOUND: ${line}]`); nMiss++; unmatched.push(line); }
       }
     }
   }
