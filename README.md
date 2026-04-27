@@ -21,7 +21,7 @@ The mapping table is loaded automatically from the local CSV file on page load.
 
 ## Mapping table
 
-The latest mapping table can be downloaded from [WormBase]([https://wormbase.org](https://wormbase.org/tools/mine/simplemine.cgi)) by selecting desired columns and click `all genes in this species`.
+The latest mapping table can be downloaded from [WormBase](https://wormbase.org/tools/mine/simplemine.cgi) by selecting desired columns and click `all genes in this species`.
 
 ## Files
 
