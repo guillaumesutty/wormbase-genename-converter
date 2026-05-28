@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WormBase Gene ID Converter — C. elegans</title>
+<title>C. elegans Gene ID Converter</title>
+<meta name="description" content="Convert C. elegans gene identifiers (Gene Name, WormBase ID, Entrez Gene ID) simply and quickly by pasting your list.">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -139,55 +141,78 @@
   #dbStatus.ready { color: var(--accent-mid); }
   #dbStatus.err   { color: var(--error); }
 
-  /* ── Direction toggle ───────────────────────────────────── */
-  .direction-row {
+  /* ── Output selection ───────────────────────────────────── */
+  .format-row {
     display: flex;
+    align-items: center;
     justify-content: center;
+    gap: 18px;
     margin-bottom: 26px;
+    flex-wrap: wrap;
+  }
+
+  .format-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .format-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-mid);
   }
 
   .dir-segment {
     display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
     background: var(--surface);
     border: 1px solid var(--border-dark);
     border-radius: 4px;
-    overflow: hidden;
+    padding: 4px;
     box-shadow: var(--shadow-sm);
+    justify-content: center;
   }
 
   .dir-btn {
-    padding: 10px 28px;
+    padding: 8px 16px;
     font-family: 'DM Mono', monospace;
-    font-size: 12px;
+    font-size: 11px;
     letter-spacing: 0.06em;
     cursor: pointer;
-    border: none;
+    border: 1px solid transparent;
     background: transparent;
     color: var(--text-muted);
     transition: all 0.2s;
     white-space: nowrap;
+    border-radius: 3px;
     display: flex;
     align-items: center;
     gap: 7px;
   }
 
-  .dir-btn + .dir-btn { border-left: 1px solid var(--border); }
-
   .dir-btn.active {
     background: var(--accent);
     color: #fff;
+    border-color: var(--accent);
   }
 
   .dir-btn:not(.active):hover {
     background: var(--accent-pale);
     color: var(--accent);
+    border-color: rgba(42,107,74,0.25);
   }
 
   /* ── Converter grid ─────────────────────────────────────── */
   .converter-grid {
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: 1fr 1fr;
     align-items: start;
+    gap: 14px;
   }
 
   /* Panel */
@@ -304,38 +329,6 @@
   .icon-btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
   .icon-btn.success { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
-  /* ── Swap column ────────────────────────────────────────── */
-  .swap-col {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 14px;
-    padding-top: 44px;
-  }
-
-  .swap-btn {
-    width: 34px; height: 34px;
-    border-radius: 50%;
-    background: var(--surface);
-    border: 1px solid var(--border-dark);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted);
-    font-size: 14px;
-    box-shadow: var(--shadow-sm);
-    transition: all 0.25s;
-    flex-shrink: 0;
-  }
-  .swap-btn:hover {
-    background: var(--accent-light);
-    border-color: var(--accent);
-    color: var(--accent);
-    transform: rotate(180deg);
-    box-shadow: var(--shadow-md);
-  }
-
   /* ── Convert button ─────────────────────────────────────── */
   .action-row {
     display: flex;
@@ -400,7 +393,6 @@
   }
   .stat-tag.show { opacity: 1; transform: translateY(0); }
   .stat-tag.matched  { background: var(--accent-light); border-color: rgba(42,107,74,0.25); color: var(--accent); }
-  .stat-tag.fallback { background: var(--warn-bg);      border-color: var(--warn-border);   color: var(--warn);   }
   .stat-tag.missed   { background: var(--error-bg);     border-color: var(--error-border);  color: var(--error);  }
 
   /* ── Unmatched ──────────────────────────────────────────── */
@@ -506,7 +498,8 @@
   /* ── Responsive ─────────────────────────────────────────── */
   @media (max-width: 680px) {
     .converter-grid { grid-template-columns: 1fr; gap: 12px; }
-    .swap-col { padding: 0; justify-content: center; height: 40px; }
+    .format-row { gap: 12px; }
+    .dir-btn { padding: 7px 12px; font-size: 10px; }
     header { flex-direction: column; align-items: flex-start; gap: 12px; }
     .page-wrap { padding: 0 16px 60px; }
   }
@@ -526,7 +519,7 @@
     <div>
       <div class="header-eyebrow">WormBase · Gene Identifier Tool</div>
       <h1>Gene ID Converter<br><em>C. elegans</em></h1>
-      <div class="header-meta">Bidirectional lookup between WormBase Gene IDs and gene names</div>
+      <div class="header-meta">Mixed-input lookup across Public Name, Systematic Name, WormBase ID, and Entrez ID</div>
     </div>
     <div class="header-badge">
       <div class="organism-tag">Caenorhabditis elegans</div>
@@ -534,15 +527,16 @@
     </div>
   </header>
 
-  <!-- Direction toggle -->
-  <div class="direction-row">
-    <div class="dir-segment">
-      <button class="dir-btn active" id="btnWBtoGene" onclick="setMode('wb')">
-        WBid → Gene Name
-      </button>
-      <button class="dir-btn" id="btnGeneToWB" onclick="setMode('gene')">
-        Gene Name → WBid
-      </button>
+  <!-- Output selection -->
+  <div class="format-row">
+    <div class="format-block">
+      <div class="format-label">Output format</div>
+      <div class="dir-segment">
+        <button class="dir-btn active" data-output-format="pub" onclick="setOutputFormat('pub')">Public Name</button>
+        <button class="dir-btn" data-output-format="seq" onclick="setOutputFormat('seq')">Systematic Name</button>
+        <button class="dir-btn" data-output-format="wbid" onclick="setOutputFormat('wbid')">WormBase ID</button>
+        <button class="dir-btn" data-output-format="entrez" onclick="setOutputFormat('entrez')">Entrez Gene ID</button>
+      </div>
     </div>
   </div>
 
@@ -552,20 +546,16 @@
     <div class="panel" id="panelInput">
       <div class="panel-head">
         <span class="panel-label">Input</span>
-        <span class="type-pill" id="inputTypeLabel">WormBase ID</span>
+        <span class="type-pill" id="inputTypeLabel">Mixed identifiers: WormBase IDs, Gene Names, Entrez IDs</span>
       </div>
       <textarea id="inputArea"
-        placeholder="Paste identifiers here, one per line&#10;&#10;e.g.&#10;WBGene00000001&#10;WBGene00004804"></textarea>
+        placeholder="Paste identifiers here (mixed formats allowed), one per line&#10;&#10;e.g.&#10;daf-2&#10;Y38F1A.2&#10;WBGene00000001&#10;172141"></textarea>
       <div class="panel-foot">
         <span class="entry-count" id="inputCount">0 entries</span>
         <div class="foot-btns">
           <button class="icon-btn" onclick="clearInput()">✕ Clear</button>
         </div>
       </div>
-    </div>
-
-    <div class="swap-col">
-      <button class="swap-btn" title="Swap direction" onclick="swapMode()">⇄</button>
     </div>
 
     <div class="panel" id="panelOutput">
@@ -595,18 +585,17 @@
   <!-- Stats chips -->
   <div class="stats-row">
     <span class="stat-tag matched"  id="chipMatched"></span>
-    <span class="stat-tag fallback" id="chipFallback"></span>
     <span class="stat-tag missed"   id="chipMissed"></span>
   </div>
 
   <!-- Unmatched -->
   <div class="unmatched-box" id="unmatchedBox">
-    <div class="unmatched-heading">⚠ Identifiers not found in database</div>
+    <div class="unmatched-heading">⚠ Identifiers not found or missing target values</div>
     <div class="unmatched-items" id="unmatchedList"></div>
   </div>
 
   <footer>
-    <span class="footer-note">Mapping sourced from WormBase · Public Name takes priority over Sequence Name for gene → WBid lookups</span>
+    <span class="footer-note">Mapping sourced from WormBase · Lookup order: Public Name → Systematic Name → WormBase ID → Entrez Gene ID</span>
     <div>
       <a class="footer-link" href="https://github.com/guillaumesutty/wormbase-genename-converter" target="_blank" rel="noopener" style="margin-right: 20px;">Guillaume SUTTY (Github) ↗</a>
       <a class="footer-link" href="https://wormbase.org" target="_blank" rel="noopener">wormbase.org ↗</a>
@@ -617,11 +606,23 @@
 
 <script>
 // ─── Data ─────────────────────────────────────────────────────────────────────
-let db          = [];
-let mapWBtoGene = {};
-let mapPubToWB  = {};
-let mapSeqToWB  = {};
-let mode        = 'wb';
+let db = [];
+let maps = {};
+let outputFormat = 'pub';
+
+const formatConfig = {
+  wbid: { label: 'WormBase ID', field: 'wbid' },
+  pub: { label: 'Public Name', field: 'pubName' },
+  seq: { label: 'Systematic Name', field: 'seqName' },
+  entrez: { label: 'Entrez Gene ID', field: 'entrezId' }
+};
+
+const outputFileNames = {
+  wbid: 'wormbase_ids.txt',
+  pub: 'public_names.txt',
+  seq: 'systematic_names.txt',
+  entrez: 'entrez_gene_ids.txt'
+};
 
 // ─── Parse CSV (semicolon or comma) ──────────────────────────────────────────
 function parseCSV(text) {
@@ -635,21 +636,31 @@ function parseCSV(text) {
     const parts = line.split(sep);
     if (parts.length < 3) continue;
     rows.push({
-      wbid:    parts[0].trim(),
-      pubName: parts[1].trim(),
-      seqName: parts[2].trim()
+      wbid: normalizeValue(parts[0] || ''),
+      pubName: normalizeValue(parts[1] || ''),
+      seqName: normalizeValue(parts[2] || ''),
+      entrezId: normalizeValue(parts[3] || '')
     });
   }
   return rows;
 }
 
 function buildMaps() {
-  mapWBtoGene = {}; mapPubToWB = {}; mapSeqToWB = {};
+  maps = { wbid: {}, pubName: {}, seqName: {}, entrezId: {} };
   for (const r of db) {
-    if (r.wbid)    mapWBtoGene[r.wbid.toLowerCase()]   = r.pubName;
-    if (r.pubName) mapPubToWB[r.pubName.toLowerCase()]  = r.wbid;
-    if (r.seqName) mapSeqToWB[r.seqName.toLowerCase()]  = r.wbid;
+    if (r.wbid) maps.wbid[r.wbid.toLowerCase()] = r;
+    if (r.pubName) maps.pubName[r.pubName.toLowerCase()] = r;
+    if (r.seqName) maps.seqName[r.seqName.toLowerCase()] = r;
+    if (r.entrezId) maps.entrezId[r.entrezId.toLowerCase()] = r;
   }
+}
+
+function normalizeValue(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  const upper = trimmed.toUpperCase();
+  if (upper === 'N.A.' || upper === 'N/A' || upper === 'NA') return '';
+  return trimmed;
 }
 
 // ─── Auto-load CSV from same directory ───────────────────────────────────────
@@ -657,7 +668,7 @@ async function loadDatabase() {
   const statusEl = document.getElementById('dbStatus');
   const overlay  = document.getElementById('loadingOverlay');
   try {
-    const res = await fetch('WBid-gene_name_mapping_table.csv');
+    const res = await fetch('Gene_IDs_mapping_table.csv');
     if (!res.ok) throw new Error(`HTTP ${res.status} — file not found`);
     const text = await res.text();
     db = parseCSV(text);
@@ -674,36 +685,25 @@ async function loadDatabase() {
   }
 }
 
+updateFormatUI();
 loadDatabase();
 
-// ─── Mode ─────────────────────────────────────────────────────────────────────
-function setMode(m) {
-  mode = m;
-  document.getElementById('btnWBtoGene').classList.toggle('active', m === 'wb');
-  document.getElementById('btnGeneToWB').classList.toggle('active', m === 'gene');
-
-  if (m === 'wb') {
-    document.getElementById('inputTypeLabel').textContent  = 'WormBase ID';
-    document.getElementById('outputTypeLabel').textContent = 'Public Name';
-    document.getElementById('inputArea').placeholder =
-      'Paste WormBase IDs here, one per line\n\ne.g.\nWBGene00000001\nWBGene00004804';
-  } else {
-    document.getElementById('inputTypeLabel').textContent  = 'Gene Name';
-    document.getElementById('outputTypeLabel').textContent = 'WormBase ID';
-    document.getElementById('inputArea').placeholder =
-      'Paste gene names here, one per line\n\ne.g.\ndaf-2\nY38F1A.2';
-  }
+// ─── Output selection ─────────────────────────────────────────────────────────
+function setOutputFormat(fmt) {
+  outputFormat = fmt;
+  updateFormatUI();
   clearOutput();
 }
 
-function swapMode() {
-  const outVal = document.getElementById('outputArea').value;
-  setMode(mode === 'wb' ? 'gene' : 'wb');
-  if (outVal.trim()) {
-    document.getElementById('inputArea').value = outVal;
-    updateInputCount();
-  }
-  clearOutput();
+function updateFormatUI() {
+  const outputLabel = formatConfig[outputFormat].label;
+  document.querySelectorAll('[data-output-format]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.outputFormat === outputFormat);
+  });
+
+  document.getElementById('inputTypeLabel').textContent = 'Mixed identifiers: WormBase IDs, Gene Names, Entrez IDs';
+  document.getElementById('outputTypeLabel').textContent = outputLabel;
+  document.getElementById('outputArea').placeholder = `Converted ${outputLabel} values will appear here…`;
 }
 
 // ─── Conversion ───────────────────────────────────────────────────────────────
@@ -713,25 +713,25 @@ function convert() {
   if (!lines.length) return;
 
   const results = [];
-  let nMatch = 0, nFall = 0, nMiss = 0;
+  let nMatch = 0, nMiss = 0;
   const unmatched = [];
+  const outputField = formatConfig[outputFormat].field;
 
   for (const line of lines) {
     const key = line.toLowerCase();
-    if (mode === 'wb') {
-      const hit = mapWBtoGene[key];
-      if (hit) { results.push(hit); nMatch++; }
-      else { nMiss++; unmatched.push(line); }
-    } else {
-      const hitPub = mapPubToWB[key];
-      if (hitPub) {
-        results.push(hitPub); nMatch++;
-      } else {
-        const hitSeq = mapSeqToWB[key];
-        if (hitSeq) { results.push(hitSeq); nFall++; }
-        else { nMiss++; unmatched.push(line); }
-      }
+    const record =
+      maps.pubName[key] ||
+      maps.seqName[key] ||
+      maps.wbid[key] ||
+      maps.entrezId[key];
+    if (!record) {
+      nMiss++;
+      unmatched.push(line);
+      continue;
     }
+    const outVal = record[outputField];
+    if (outVal) { results.push(outVal); nMatch++; }
+    else { nMiss++; unmatched.push(line); }
   }
 
   document.getElementById('outputArea').value = results.join('\n');
@@ -752,9 +752,8 @@ function convert() {
     el.textContent = txt;
     el.classList.toggle('show', vis);
   };
-  show('chipMatched',  `✓ ${nMatch} matched via Public Name`,   nMatch > 0);
-  show('chipFallback', `~ ${nFall} matched via Sequence Name`,  nFall  > 0);
-  show('chipMissed',   `✗ ${nMiss} not found`,                  nMiss  > 0);
+  show('chipMatched',  `✓ ${nMatch} matched`,           nMatch > 0);
+  show('chipMissed',   `✗ ${nMiss} not found or empty`, nMiss  > 0);
 
   const box = document.getElementById('unmatchedBox');
   if (unmatched.length) {
@@ -777,7 +776,7 @@ function clearOutput() {
   updateOutputCount(0);
   document.getElementById('copyBtn').disabled     = true;
   document.getElementById('downloadBtn').disabled = true;
-  ['chipMatched','chipFallback','chipMissed'].forEach(id =>
+  ['chipMatched','chipMissed'].forEach(id =>
     document.getElementById(id).classList.remove('show'));
   document.getElementById('unmatchedBox').classList.remove('show');
 }
@@ -812,7 +811,7 @@ function downloadOutput() {
   if (!text) return;
   const a    = document.createElement('a');
   a.href     = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
-  a.download = mode === 'wb' ? 'gene_names.txt' : 'wormbase_ids.txt';
+  a.download = outputFileNames[outputFormat] || 'converted_ids.txt';
   a.click();
 }
 
