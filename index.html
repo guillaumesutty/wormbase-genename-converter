@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>C. elegans Gene ID Converter</title>
 <meta name="description" content="Convert C. elegans gene identifiers (Gene Name, WormBase ID, Entrez Gene ID) simply and quickly by pasting your list.">
-<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -71,9 +73,36 @@
     padding: 0 32px 10px;
   }
 
+  /* ── Top nav ────────────────────────────────────────────── */
+  .top-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 14px 0 12px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+  .top-nav-brand { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.18em; font-size: 10px; }
+  .top-nav-brand em { text-transform: none; letter-spacing: 0.04em; }
+  .top-nav-links { display: flex; gap: 6px; flex-wrap: wrap; }
+  .top-nav-links a {
+    color: var(--text-mid);
+    text-decoration: none;
+    padding: 4px 10px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .top-nav-links a:hover { background: var(--surface); border-color: var(--border-dark); color: var(--accent); }
+  .top-nav-links a[aria-current="page"] { background: var(--accent-light); border-color: var(--accent-mid); color: var(--accent); }
+
   /* ── Header ─────────────────────────────────────────────── */
   header {
-    padding: 44px 0 30px;
+    padding: 32px 0 30px;
     border-bottom: 2px solid var(--accent);
     margin-bottom: 36px;
     display: flex;
@@ -515,6 +544,14 @@
 
 <div class="page-wrap">
 
+  <nav class="top-nav" aria-label="Tools">
+    <span class="top-nav-brand"><em>C. elegans</em> · Toolbox</span>
+    <div class="top-nav-links">
+      <a href="index.html" aria-current="page">Gene ID Converter</a>
+      <a href="celegans-region-fetcher.html">Region Fetcher</a>
+    </div>
+  </nav>
+
   <header>
     <div>
       <div class="header-eyebrow">WormBase · Gene Identifier Tool</div>
@@ -579,7 +616,6 @@
   <!-- Action -->
   <div class="action-row">
     <button class="btn-convert" onclick="convert()">Convert →</button>
-    <span class="kbd-hint">or Ctrl + Enter</span>
   </div>
 
   <!-- Stats chips -->

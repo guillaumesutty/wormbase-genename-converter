@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C. elegans Region Fetcher</title>
+<meta name="description" content="Download a C. elegans gene with flanking genomic sequence from Ensembl as FASTA or annotated GenBank.">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:           #f5f4f0;
+    --bg2:          #edecea;
+    --surface:      #ffffff;
+    --surface2:     #f9f8f6;
+    --border:       #dddbd5;
+    --border-dark:  #c8c5bc;
+    --accent:       #2a6b4a;
+    --accent-mid:   #3a8a60;
+    --accent-light: #e8f3ed;
+    --accent-pale:  #f0f8f3;
+    --text:         #1c1c1a;
+    --text-mid:     #4a4a44;
+    --text-muted:   #8a8880;
+    --text-faint:   #b8b5ad;
+    --warn:         #8a5a00;
+    --warn-bg:      #fdf5e6;
+    --warn-border:  #e8c87a;
+    --error:        #8a2020;
+    --error-bg:     #fdf0f0;
+    --error-border: #e8a0a0;
+    --shadow-sm:    0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md:    0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.05);
+    --shadow-lg:    0 8px 28px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.06);
+    --mono:         'DM Mono', ui-monospace, Menlo, monospace;
+    --serif:        'DM Serif Display', Georgia, serif;
+    --sans:         'Lato', system-ui, sans-serif;
+    color-scheme: light;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-weight: 400;
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  /* Subtle ruled-paper texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      to bottom, transparent, transparent 27px,
+      rgba(0,0,0,0.022) 27px, rgba(0,0,0,0.022) 28px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page-wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 32px 10px;
+  }
+
+  /* ── Top nav ────────────────────────────────────────────── */
+  .top-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 14px 0 12px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+  .top-nav-brand { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.18em; font-size: 10px; }
+  .top-nav-brand em { text-transform: none; letter-spacing: 0.04em; }
+  .top-nav-links { display: flex; gap: 6px; flex-wrap: wrap; }
+  .top-nav-links a {
+    color: var(--text-mid);
+    text-decoration: none;
+    padding: 4px 10px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .top-nav-links a:hover { background: var(--surface); border-color: var(--border-dark); color: var(--accent); }
+  .top-nav-links a[aria-current="page"] { background: var(--accent-light); border-color: var(--accent-mid); color: var(--accent); }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  header {
+    padding: 32px 0 30px;
+    border-bottom: 2px solid var(--accent);
+    margin-bottom: 36px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+  }
+  .header-eyebrow {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--accent-mid); margin-bottom: 8px;
+  }
+  h1 {
+    font-family: var(--serif); font-size: clamp(26px, 3.5vw, 40px); font-weight: 400;
+    color: var(--text); letter-spacing: -0.02em; line-height: 1.1;
+  }
+  h1 em { font-style: italic; color: var(--accent); }
+  .header-meta { margin-top: 8px; font-size: 13px; color: var(--text-muted); font-weight: 300; }
+  .header-badge { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex-shrink: 0; }
+  .organism-tag {
+    font-family: var(--mono); font-size: 11px; font-style: italic; color: var(--text-mid);
+    background: var(--surface); border: 1px solid var(--border-dark); padding: 5px 12px; border-radius: 3px;
+  }
+  .assembly-tag { font-family: var(--mono); font-size: 10px; color: var(--accent-mid); letter-spacing: 0.06em; }
+
+  /* ── Option selectors ───────────────────────────────────── */
+  .format-row {
+    display: flex; align-items: flex-start; gap: 14px 18px; flex-wrap: wrap;
+    padding-top: 16px; border-top: 1px dashed var(--border);
+  }
+  .format-block { display: flex; flex-direction: column; align-items: flex-start; border: 0; min-width: 0; }
+  .format-label {
+    font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--text-mid); margin-bottom: 6px;
+  }
+  .dir-segment {
+    display: flex; flex-wrap: wrap; gap: 6px; background: var(--surface);
+    border: 1px solid var(--border-dark); border-radius: 4px; padding: 4px;
+    box-shadow: var(--shadow-sm); justify-content: center;
+  }
+  .dir-btn {
+    position: relative;
+    padding: 8px 16px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+    cursor: pointer; border: 1px solid transparent; background: transparent; color: var(--text-muted);
+    transition: all 0.2s; white-space: nowrap; border-radius: 3px; display: flex; align-items: center; gap: 7px;
+  }
+  .dir-btn input { position: absolute; opacity: 0; pointer-events: none; }
+  .dir-btn:has(input:checked) { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .dir-btn:not(:has(input:checked)):hover { background: var(--accent-pale); color: var(--accent); border-color: rgba(42,107,74,0.25); }
+  .dir-btn:has(input:focus-visible) { outline: 2px solid var(--accent-mid); outline-offset: 2px; }
+
+  /* ── Grid + panels ──────────────────────────────────────── */
+  .converter-grid { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 14px; }
+  .panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    display: flex; flex-direction: column; box-shadow: var(--shadow-md);
+    transition: box-shadow 0.25s, border-color 0.25s; min-width: 0;
+  }
+  .panel:focus-within { border-color: var(--accent-mid); box-shadow: var(--shadow-lg), 0 0 0 3px rgba(42,107,74,0.08); }
+  .panel-head {
+    padding: 11px 16px 10px; border-bottom: 1px solid var(--border); background: var(--surface2);
+    border-radius: 6px 6px 0 0; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .panel-label {
+    font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .type-pill {
+    font-family: var(--mono); font-size: 10px; padding: 3px 9px; background: var(--accent-light);
+    color: var(--accent); border: 1px solid rgba(42,107,74,0.25); border-radius: 2px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .panel-body { padding: 18px 16px; display: grid; gap: 18px; min-height: 300px; align-content: start; }
+  .panel-foot {
+    padding: 9px 12px; border-top: 1px solid var(--border); background: var(--surface2);
+    border-radius: 0 0 6px 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  }
+  .entry-count { font-family: var(--mono); font-size: 10px; color: var(--text-faint); letter-spacing: 0.06em; overflow-wrap: anywhere; min-width: 0; }
+  .foot-btns { display: flex; gap: 5px; }
+
+  /* Fields */
+  .field { display: grid; gap: 6px; min-width: 0; }
+  .field-label {
+    font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--text-mid);
+  }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  input[type=text], input[type=number] {
+    width: 100%; font-family: var(--mono); font-size: 13px; font-weight: 400; color: var(--text);
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 9px 12px;
+    outline: none; transition: border-color 0.2s, background 0.2s;
+  }
+  input[type=text]:focus, input[type=number]:focus { border-color: var(--accent-mid); background: var(--surface); }
+  .unit { position: relative; }
+  .unit input { padding-right: 38px; }
+  .unit::after {
+    content: "bp"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--text-faint); font-family: var(--mono); font-size: 11px; pointer-events: none;
+  }
+  .presets { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .presets-label { font-family: var(--mono); font-size: 10px; color: var(--text-muted); letter-spacing: 0.06em; margin-right: 3px; }
+
+  /* Buttons */
+  .icon-btn {
+    height: 28px; padding: 0 11px; background: var(--surface); border: 1px solid var(--border-dark);
+    border-radius: 3px; cursor: pointer; display: flex; align-items: center; gap: 5px; color: var(--text-muted);
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.05em; transition: all 0.18s; white-space: nowrap;
+  }
+  .icon-btn:hover { border-color: var(--accent-mid); color: var(--accent); background: var(--accent-pale); }
+  .icon-btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+  .icon-btn.success { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+  .icon-btn:focus-visible, .btn-convert:focus-visible { outline: 2px solid var(--accent-mid); outline-offset: 2px; }
+
+  .action-row { display: flex; align-items: center; justify-content: center; margin-top: 22px; gap: 12px; flex-wrap: wrap; }
+  .btn-convert {
+    background: var(--accent); color: #fff; border: none; padding: 12px 40px; border-radius: 4px;
+    font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.2s; box-shadow: var(--shadow-md); display: flex; align-items: center; gap: 9px;
+  }
+  .btn-convert:hover { background: var(--accent-mid); box-shadow: var(--shadow-lg); transform: translateY(-1px); }
+  .btn-convert:active { transform: none; box-shadow: var(--shadow-sm); }
+  .btn-convert[disabled] { opacity: 0.6; cursor: progress; transform: none; }
+  .kbd-hint { font-family: var(--mono); font-size: 10px; color: var(--text-faint); letter-spacing: 0.05em; }
+
+  /* Status + error */
+  .stats-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; justify-content: center; min-height: 26px; }
+  .stat-tag {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; padding: 4px 11px; border-radius: 2px;
+    border: 1px solid rgba(42,107,74,0.25); background: var(--accent-light); color: var(--accent);
+  }
+  .stat-tag:empty { display: none; }
+  .error-box {
+    margin-top: 14px; background: var(--error-bg); border: 1px solid var(--error-border); border-radius: 4px;
+    padding: 14px 18px; font-size: 13px; color: var(--error);
+  }
+  .error-heading {
+    font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--error); margin-bottom: 6px;
+  }
+
+  /* Output contents */
+  .empty-state { color: var(--text-faint); font-family: var(--mono); font-size: 13px; font-weight: 300; font-style: italic; line-height: 1.85; }
+  .result { display: grid; gap: 16px; min-width: 0; }
+  .result h2 { font-family: var(--serif); font-weight: 400; font-size: 22px; line-height: 1.2; color: var(--text); }
+  .result h2 .id { font-family: var(--mono); font-size: 12px; color: var(--accent-mid); letter-spacing: 0.04em; margin-left: 6px; }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 16px; }
+  .facts div { min-width: 0; }
+  .facts .wide { grid-column: 1 / -1; }
+  .facts dt { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); }
+  .facts dd { font-family: var(--mono); font-size: 12px; color: var(--text); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .map { width: 100%; height: auto; display: block; }
+  .map .flank { fill: var(--border-dark); }
+  .map .intron { stroke: var(--accent-mid); stroke-width: 1.5; }
+  .map .exon { fill: var(--accent); }
+  .map .tick { stroke: var(--border-dark); }
+  .map-labels { display: flex; justify-content: space-between; gap: 12px; font-family: var(--mono); font-size: 10px; color: var(--text-muted); letter-spacing: 0.04em; margin-top: 4px; }
+  .map-labels span:nth-child(2) { text-align: center; }
+  .map-labels span:last-child { text-align: right; }
+  .note {
+    font-size: 12px; color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-border);
+    border-radius: 3px; padding: 7px 11px;
+  }
+  .preview-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); }
+  pre {
+    background: var(--accent-pale); color: var(--accent); border: 1px solid var(--border); border-radius: 3px;
+    padding: 12px 14px; font: 300 12px/1.7 var(--mono); overflow: auto; max-height: 320px;
+  }
+
+  /* ── Footer ─────────────────────────────────────────────── */
+  footer {
+    margin-top: 17px; padding-top: 16px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  .footer-note { font-size: 11px; color: var(--text-faint); font-style: italic; }
+  .footer-links { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+  .footer-link {
+    font-family: var(--mono); font-size: 10px; color: var(--accent-mid); text-decoration: none;
+    letter-spacing: 0.05em; border-bottom: 1px solid transparent; transition: border-color 0.2s;
+  }
+  .footer-link:hover { border-color: var(--accent); }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-dark); border-radius: 3px; }
+
+  @media (max-width: 680px) {
+    .converter-grid { grid-template-columns: 1fr; gap: 12px; }
+    .format-row { gap: 12px; }
+    .dir-btn { padding: 7px 12px; font-size: 10px; }
+    header { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .header-badge { align-items: flex-start; }
+    .page-wrap { padding: 0 16px 60px; }
+    .panel-body { min-height: 0; }
+  }
+  @media (max-width: 420px) { .row { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <nav class="top-nav" aria-label="Tools">
+    <span class="top-nav-brand"><em>C. elegans</em> · Toolbox</span>
+    <div class="top-nav-links">
+      <a href="index.html">Gene ID Converter</a>
+      <a href="celegans-region-fetcher.html" aria-current="page">Region Fetcher</a>
+    </div>
+  </nav>
+
+  <header>
+    <div>
+      <div class="header-eyebrow">Ensembl · Genomic Region Tool</div>
+      <h1>Region Fetcher<br><em>C. elegans</em></h1>
+      <div class="header-meta">Download a gene with its flanking genomic sequence as FASTA or annotated GenBank</div>
+    </div>
+    <div class="header-badge">
+      <div class="organism-tag">Caenorhabditis elegans</div>
+      <div class="assembly-tag">Assembly WBcel235</div>
+    </div>
+  </header>
+
+  <form id="form" novalidate>
+    <div class="converter-grid">
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-label">Query</span>
+          <span class="type-pill">Gene + flanks</span>
+        </div>
+        <div class="panel-body">
+          <div class="field">
+            <label class="field-label" for="gene">Gene <span style="color: grey;">(WormBase ID, gene name or systematic name)</span></label>
+            <input id="gene" type="text" value="WBGene00004510" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="row">
+            <div class="field">
+              <label class="field-label" for="f5">5′ flank · upstream</label>
+              <div class="unit"><input id="f5" type="number" min="0" max="1000000" step="1" value="0"></div>
+            </div>
+            <div class="field">
+              <label class="field-label" for="f3">3′ flank · downstream</label>
+              <div class="unit"><input id="f3" type="number" min="0" max="1000000" step="1" value="0"></div>
+            </div>
+          </div>
+          <div class="presets"><span class="presets-label">Both sides:</span>
+            <button type="button" class="icon-btn chip" data-bp="0">0</button>
+            <button type="button" class="icon-btn chip" data-bp="500">500</button>
+            <button type="button" class="icon-btn chip" data-bp="1000">1 kb</button>
+            <button type="button" class="icon-btn chip" data-bp="2000">2 kb</button>
+            <button type="button" class="icon-btn chip" data-bp="5000">5 kb</button>
+          </div>
+          <div class="format-row">
+            <fieldset class="format-block">
+              <legend class="format-label">Output type</legend>
+              <div class="dir-segment">
+                <label class="dir-btn"><input type="radio" name="fmt" id="fmt-fasta" value="fasta" checked>FASTA</label>
+                <label class="dir-btn"><input type="radio" name="fmt" id="fmt-gb" value="genbank">GenBank</label>
+              </div>
+            </fieldset>
+            <fieldset class="format-block">
+              <legend class="format-label">Output orientation</legend>
+              <div class="dir-segment">
+                <label class="dir-btn"><input type="radio" name="orient" id="or-gene" value="gene" checked>Gene strand</label>
+                <label class="dir-btn"><input type="radio" name="orient" id="or-fwd" value="forward">Genome + strand</label>
+              </div>
+            </fieldset>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panelOutput">
+        <div class="panel-head">
+          <span class="panel-label">Output</span>
+          <span class="type-pill" id="fmt-pill">FASTA</span>
+        </div>
+        <div class="panel-body">
+          <p class="empty-state" id="empty">Region details, a map of the gene and its flanks, and a preview of the file will appear here…</p>
+          <div class="result" id="result" hidden>
+            <h2 id="r-title"></h2>
+            <dl class="facts" id="facts"></dl>
+            <div>
+              <svg class="map" id="map" viewBox="0 0 1000 46" role="img" aria-label="Region map"></svg>
+              <div class="map-labels" id="map-labels"></div>
+            </div>
+            <div class="note" id="r-notes" hidden></div>
+            <span class="preview-label" id="pv-label">Preview</span>
+            <pre id="preview"></pre>
+          </div>
+        </div>
+        <div class="panel-foot">
+          <span class="entry-count" id="file-count">No file yet</span>
+          <div class="foot-btns">
+            <button type="button" class="icon-btn" id="copy" disabled>⎘ Copy</button>
+            <button type="button" class="icon-btn" id="again" disabled>↓ Save again</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button class="btn-convert" id="go" type="submit">Download ↓</button>
+    </div>
+  </form>
+
+  <div class="stats-row"><span class="stat-tag" id="status" aria-live="polite"></span></div>
+  <div class="error-box" id="error-box" role="alert" hidden>
+    <div class="error-heading">⚠ Could not fetch the region</div>
+    <div id="error"></div>
+  </div>
+
+  <footer>
+    <span class="footer-note">Sequence and annotation from the Ensembl REST API · assembly WBcel235</span>
+    <div class="footer-links">
+      <a class="footer-link" href="https://github.com/guillaumesutty/wormbase-genename-converter" target="_blank" rel="noopener">Guillaume SUTTY (Github) ↗</a>
+      <a class="footer-link" href="https://www.ensembl.org/Caenorhabditis_elegans/" target="_blank" rel="noopener">ensembl.org ↗</a>
+    </div>
+  </footer>
+
+</div>
+
+<script id="core">
+/* ---------- Ensembl access + file builders (no DOM) ---------- */
+const REST = "https://rest.ensembl.org";
+const SPECIES = "caenorhabditis_elegans";
+
+async function getJSON(path){
+  const url = REST + path + (path.includes("?") ? ";" : "?") + "content-type=application/json";
+  let r;
+  try { r = await fetch(url); }
+  catch(e){ const err = new Error("Couldn't reach rest.ensembl.org. Check your internet connection, and open this file directly in your browser (not inside a preview)."); err.network = true; throw err; }
+  if (r.status === 429) throw new Error("Ensembl is rate-limiting requests. Wait a few seconds and try again.");
+  if (!r.ok){
+    let msg = "Ensembl returned HTTP " + r.status;
+    try { const j = await r.json(); if (j.error) msg = j.error; } catch(_){}
+    const err = new Error(msg); err.status = r.status; throw err;
+  }
+  return r.json();
+}
+
+async function lookupGene(q){
+  q = q.trim();
+  if (!q) throw new Error("Enter a gene ID or name.");
+  let g = null;
+  try { g = await getJSON(`/lookup/id/${encodeURIComponent(q)}?expand=1`); }
+  catch(e){ if (e.network) throw e; }
+  if (!g){
+    try { g = await getJSON(`/lookup/symbol/${SPECIES}/${encodeURIComponent(q)}?expand=1`); }
+    catch(e){ if (e.network) throw e; }
+  }
+  if (!g) throw new Error(`No C. elegans gene found for “${q}”. Try a WormBase gene ID such as WBGene00004510.`);
+  if (g.object_type === "Transcript" && g.Parent) return lookupGene(g.Parent);
+  if (g.object_type !== "Gene") throw new Error(`“${q}” is a ${g.object_type || "feature"}, not a gene.`);
+  if (g.species && g.species !== SPECIES) throw new Error(`“${q}” is a ${g.species.replace(/_/g," ")} gene, not C. elegans.`);
+  return g;
+}
+
+function computeRegion(g, f5, f3, orientMode, chrLen){
+  const s = g.strand;
+  let start = s === 1 ? g.start - f5 : g.start - f3;
+  let end   = s === 1 ? g.end + f3   : g.end + f5;
+  const notes = [];
+  if (start < 1){ notes.push(`Flank trimmed at the chromosome start (position 1).`); start = 1; }
+  if (chrLen && end > chrLen){ notes.push(`Flank trimmed at the chromosome end (${chrLen.toLocaleString("en")}).`); end = chrLen; }
+  const f5eff = s === 1 ? g.start - start : end - g.end;
+  const f3eff = s === 1 ? end - g.end : g.start - start;
+  return { chr: g.seq_region_name, start, end, orient: orientMode === "gene" ? s : 1, f5: f5eff, f3: f3eff, notes };
+}
+
+async function fetchRegion(opts){
+  const g = await lookupGene(opts.gene);
+  let chrLen = null;
+  try { chrLen = (await getJSON(`/info/assembly/${SPECIES}/${encodeURIComponent(g.seq_region_name)}`)).length; } catch(e){ if (e.network) throw e; }
+  const reg = computeRegion(g, opts.f5, opts.f3, opts.orient, chrLen);
+  if (reg.end - reg.start + 1 > 5e6) throw new Error("That region is over 5 Mb. Use smaller flanks.");
+  const seqObj = await getJSON(`/sequence/region/${SPECIES}/${reg.chr}:${reg.start}..${reg.end}:${reg.orient}`);
+  const seq = seqObj.seq.toUpperCase();
+  let txs = (g.Transcript || []).slice();
+  const canon = txs.filter(t => t.is_canonical);
+  txs = canon.length ? canon : txs.slice(0, 1);
+  const proteins = {};
+  if (opts.format === "genbank"){
+    await Promise.all(txs.filter(t => t.Translation).map(async t => {
+      try { proteins[t.id] = (await getJSON(`/sequence/id/${encodeURIComponent(t.id)}?type=protein`)).seq; } catch(e){ /* annotation without translation */ }
+    }));
+  }
+  return { g, reg, seq, txs, proteins };
+}
+
+function geneLabel(g){ return g.display_name || g.id; }
+function strandSign(n){ return n === 1 ? "+" : "-"; }
+
+function buildFasta(d){
+  const { g, reg, seq } = d;
+  const head = `>${geneLabel(g)} ${g.id} ${reg.chr}:${reg.start}-${reg.end}(${strandSign(reg.orient)}) 5'flank=${reg.f5} 3'flank=${reg.f3} ${g.assembly_name || "WBcel235"}`;
+  const lines = [head];
+  for (let i = 0; i < seq.length; i += 60) lines.push(seq.slice(i, i + 60));
+  return lines.join("\n") + "\n";
+}
+
+/* GenBank helpers */
+function chunk(s, n){ const o = []; for (let i = 0; i < s.length; i += n) o.push(s.slice(i, i + n)); return o.length ? o : [""]; }
+function wrapWords(s, w){
+  const out = []; let cur = "";
+  for (const word of s.split(" ")){
+    const cand = cur ? cur + " " + word : word;
+    if (cand.length <= w){ cur = cand; continue; }
+    if (cur) out.push(cur);
+    if (word.length > w){ const parts = chunk(word, w); cur = parts.pop(); out.push(...parts); } else cur = word;
+  }
+  if (cur || !out.length) out.push(cur);
+  return out;
+}
+function wrapLoc(loc, w){
+  const out = []; let cur = "";
+  for (const part of loc.split(/(?<=,)/)){
+    if (cur && (cur + part).length > w){ out.push(cur); cur = part; } else cur += part;
+  }
+  if (cur) out.push(cur);
+  return out.flatMap(l => chunk(l, w));
+}
+const QPAD = " ".repeat(21);
+function gbFeature(key, loc, quals){
+  const ll = wrapLoc(loc, 58);
+  let s = "     " + key.padEnd(16) + ll[0] + "\n";
+  for (const l of ll.slice(1)) s += QPAD + l + "\n";
+  for (const [k, v] of quals){
+    const text = typeof v === "number" ? `/${k}=${v}` : `/${k}="${String(v).replace(/"/g, '""')}"`;
+    const lines = k === "translation" ? chunk(text, 58) : wrapWords(text, 58);
+    for (const l of lines) s += QPAD + l + "\n";
+  }
+  return s;
+}
+function gbField(name, text){
+  const lines = wrapWords(text, 67);
+  return name.padEnd(12) + lines[0] + "\n" + lines.slice(1).map(l => " ".repeat(12) + l + "\n").join("");
+}
+function gbDate(d = new Date()){
+  const m = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"][d.getMonth()];
+  return String(d.getDate()).padStart(2, "0") + "-" + m + "-" + d.getFullYear();
+}
+
+function buildGenBank(d){
+  const { g, reg, seq, txs, proteins } = d;
+  const L = seq.length;
+  const pos = x => reg.orient === 1 ? x - reg.start + 1 : reg.end - x + 1;
+  const span = (a, b) => { const p = pos(a), q = pos(b); return [Math.min(p, q), Math.max(p, q)]; };
+  const loc = (segs, strand) => {
+    const s = segs.map(([a, b]) => span(a, b)).sort((x, y) => x[0] - y[0]);
+    const body = s.length === 1 ? `${s[0][0]}..${s[0][1]}` : `join(${s.map(x => x[0] + ".." + x[1]).join(",")})`;
+    return strand * reg.orient === 1 ? body : `complement(${body})`;
+  };
+  const sym = geneLabel(g);
+  const locusName = (sym.replace(/[^A-Za-z0-9._-]/g, "_") + "_region").slice(0, 16);
+  const strandWord = reg.orient === 1 ? "plus" : "minus";
+
+  let out = "";
+  out += "LOCUS".padEnd(12) + locusName.padEnd(16) + " " + String(L).padStart(11) + " bp    " + "DNA".padEnd(8) + "linear".padEnd(9) + "INV " + gbDate() + "\n";
+  out += gbField("DEFINITION", `Caenorhabditis elegans ${sym} (${g.id}) genomic region ${reg.chr}:${reg.start}-${reg.end}, ${strandWord} strand, with ${reg.f5} bp 5' and ${reg.f3} bp 3' flanking sequence.`);
+  out += "KEYWORDS    .\n";
+  out += "SOURCE      Caenorhabditis elegans\n";
+  out += "  ORGANISM  Caenorhabditis elegans\n";
+  out += "            Eukaryota; Metazoa; Ecdysozoa; Nematoda; Chromadorea; Rhabditida;\n";
+  out += "            Rhabditina; Rhabditomorpha; Rhabditoidea; Rhabditidae; Peloderinae;\n";
+  out += "            Caenorhabditis.\n";
+  out += gbField("COMMENT", `Retrieved from the Ensembl REST API (rest.ensembl.org) on ${new Date().toISOString().slice(0,10)}. Assembly ${g.assembly_name || "WBcel235"}, chromosome ${reg.chr}:${reg.start}-${reg.end}, ${strandWord} strand. Feature coordinates are relative to this sequence.${reg.notes.length ? " " + reg.notes.join(" ") : ""}`);
+  out += "FEATURES             Location/Qualifiers\n";
+  out += gbFeature("source", `1..${L}`, [["organism","Caenorhabditis elegans"],["mol_type","genomic DNA"],["chromosome",reg.chr],["db_xref","taxon:6239"]]);
+  const geneQ = [["gene", sym], ["locus_tag", g.id]];
+  if (g.description) geneQ.push(["note", g.description.replace(/\s*\[Source:.*\]$/, "")]);
+  if (g.biotype) geneQ.push(["note", "biotype: " + g.biotype]);
+  out += gbFeature("gene", loc([[g.start, g.end]], g.strand), geneQ);
+
+  for (const t of txs){
+    const exons = (t.Exon || []).map(e => [e.start, e.end]);
+    if (!exons.length) continue;
+    const tname = t.display_name || t.id;
+    const isCoding = !!t.Translation;
+    const rnaQ = [["gene", sym], ["transcript_id", t.id]];
+    if (!isCoding) rnaQ.push(["note", "biotype: " + t.biotype]);
+    if (t.is_canonical) rnaQ.push(["note", "Ensembl canonical transcript"]);
+    out += gbFeature(isCoding ? "mRNA" : "misc_RNA", loc(exons, t.strand), rnaQ);
+    if (isCoding){
+      const a = t.Translation.start, b = t.Translation.end;
+      const cds = exons.map(([s, e]) => [Math.max(s, a), Math.min(e, b)]).filter(([s, e]) => s <= e);
+      const q = [["gene", sym], ["codon_start", 1], ["product", tname], ["protein_id", t.Translation.id]];
+      if (proteins[t.id]) q.push(["translation", proteins[t.id].replace(/\*$/, "")]);
+      out += gbFeature("CDS", loc(cds, t.strand), q);
+    }
+  }
+
+  out += "ORIGIN\n";
+  const s = seq.toLowerCase();
+  for (let i = 0; i < L; i += 60){
+    const line = s.slice(i, i + 60);
+    out += String(i + 1).padStart(9) + " " + chunk(line, 10).join(" ") + "\n";
+  }
+  out += "//\n";
+  return out;
+}
+
+function fileName(d, format){
+  const { g, reg } = d;
+  const base = `${geneLabel(g)}_${reg.chr}_${reg.start}-${reg.end}_${reg.orient === 1 ? "plus" : "minus"}_5p${reg.f5}_3p${reg.f3}`.replace(/[^A-Za-z0-9._-]/g, "_");
+  return base + (format === "genbank" ? ".gb" : ".fa");
+}
+</script>
+
+<script>
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+let last = null; // {text, name}
+
+document.querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => { $("f5").value = c.dataset.bp; $("f3").value = c.dataset.bp; }));
+
+function readFlank(id, label){
+  const v = $(id).value.trim();
+  if (!/^\d+$/.test(v)) throw new Error(`${label} must be a whole number of base pairs (0 or more).`);
+  const n = parseInt(v, 10);
+  if (n > 1000000) throw new Error(`${label} can be at most 1,000,000 bp.`);
+  return n;
+}
+
+function saveFile(text, name){
+  const blob = new Blob([text], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+const fmt = n => n.toLocaleString("en");
+
+function drawMap(d){
+  const { g, reg, txs } = d;
+  const svg = $("map"), W = 1000, x0 = 10, x1 = 990, total = reg.end - reg.start + 1;
+  const pos = x => reg.orient === 1 ? x - reg.start : reg.end - x;
+  const X = p => x0 + (p / total) * (x1 - x0);
+  const t = txs.find(t => t.is_canonical) || txs[0];
+  let h = "";
+  h += `<rect class="flank" x="${x0}" y="22" width="${x1 - x0}" height="6" rx="3"/>`;
+  const gs = X(Math.min(pos(g.start), pos(g.end))), ge = X(Math.max(pos(g.start), pos(g.end)) + 1);
+  h += `<line class="intron" x1="${gs}" y1="25" x2="${ge}" y2="25"/>`;
+  for (const e of (t && t.Exon) || [{start: g.start, end: g.end}]){
+    const a = X(Math.min(pos(e.start), pos(e.end))), b = X(Math.max(pos(e.start), pos(e.end)) + 1);
+    h += `<rect class="exon" x="${a}" y="15" width="${Math.max(1.5, b - a)}" height="20" rx="1.5"/>`;
+  }
+  const geneFwd = g.strand * reg.orient === 1;
+  const ax = geneFwd ? ge + 2 : gs - 2, dir = geneFwd ? 1 : -1;
+  h += `<path class="exon" d="M${ax} 19 L${ax + 7*dir} 25 L${ax} 31 Z"/>`;
+  h += `<line class="tick" x1="${gs}" y1="38" x2="${gs}" y2="44"/><line class="tick" x1="${ge}" y1="38" x2="${ge}" y2="44"/>`;
+  svg.innerHTML = h;
+  const labels = [
+    `${geneFwd ? "5′" : "3′"} flank ${fmt(geneFwd ? reg.f5 : reg.f3)} bp`,
+    `${geneLabel(g)} ${fmt(g.end - g.start + 1)} bp`,
+    `${geneFwd ? "3′" : "5′"} flank ${fmt(geneFwd ? reg.f3 : reg.f5)} bp`,
+  ];
+  $("map-labels").replaceChildren(...labels.map(t => { const s = document.createElement("span"); s.textContent = t; return s; }));
+}
+
+function showResult(d, text, name, format){
+  const { g, reg } = d;
+  $("r-title").textContent = geneLabel(g);
+  const idSpan = document.createElement("span"); idSpan.className = "id"; idSpan.textContent = g.id;
+  $("r-title").append(idSpan);
+  const facts = [
+    ["Region", `${reg.chr}:${fmt(reg.start)}-${fmt(reg.end)}`],
+    ["Length", `${fmt(reg.end - reg.start + 1)} bp`],
+    ["Strand", reg.orient === 1 ? "+ (forward)" : "− (reverse complement)"],
+    ["Gene", `${reg.chr}:${fmt(g.start)}-${fmt(g.end)} (${strandSign(g.strand)})`],
+  ];
+  $("facts").innerHTML = "";
+  for (const [k, v] of facts){
+    const div = document.createElement("div");
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v;
+    if (k === "File") div.className = "wide";
+    div.append(dt, dd); $("facts").append(div);
+  }
+  $("r-notes").hidden = !reg.notes.length;
+  $("r-notes").textContent = reg.notes.join(" ");
+  drawMap(d);
+  const lines = text.split("\n");
+  const max = format === "genbank" ? 60 : 20;
+  $("pv-label").textContent = lines.length > max + 1 ? `Preview · first ${max} lines` : "Preview";
+  $("preview").textContent = lines.slice(0, max).join("\n") + (lines.length > max + 1 ? "\n…" : "");
+  $("result").hidden = false;
+  $("empty").hidden = true;
+  $("file-count").textContent = `${name} · ${fmt(text.length)} bytes`;
+  $("copy").disabled = $("again").disabled = false;
+}
+
+$("form").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  $("error-box").hidden = true;
+  const btn = $("go");
+  try {
+    const opts = {
+      gene: $("gene").value,
+      f5: readFlank("f5", "5′ flank"),
+      f3: readFlank("f3", "3′ flank"),
+      format: $("fmt-gb").checked ? "genbank" : "fasta",
+      orient: $("or-gene").checked ? "gene" : "forward",
+    };
+    btn.disabled = true; $("status").textContent = "Fetching from Ensembl…";
+    const d = await fetchRegion(opts);
+    const text = opts.format === "genbank" ? buildGenBank(d) : buildFasta(d);
+    const name = fileName(d, opts.format);
+    last = { text, name };
+    saveFile(text, name);
+    showResult(d, text, name, opts.format);
+    $("status").textContent = `✓ Saved ${name}`;
+  } catch (e){
+    $("status").textContent = "";
+    $("error").textContent = e.message || String(e);
+    $("error-box").hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function syncPill(){ $("fmt-pill").textContent = $("fmt-gb").checked ? "GenBank" : "FASTA"; }
+document.querySelectorAll("input[name=fmt]").forEach(r => r.addEventListener("change", syncPill));
+syncPill();
+
+$("again").addEventListener("click", () => { if (last) saveFile(last.text, last.name); });
+$("copy").addEventListener("click", async () => {
+  if (!last) return;
+  try { await navigator.clipboard.writeText(last.text); $("copy").textContent = "✓ Copied"; $("copy").classList.add("success"); }
+  catch(_){ const r = document.createRange(); r.selectNodeContents($("preview")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("copy").textContent = "Copy failed"; }
+  setTimeout(() => { $("copy").textContent = "⎘ Copy"; $("copy").classList.remove("success"); }, 1500);
+});
+</script>
+</body>
+</html>
