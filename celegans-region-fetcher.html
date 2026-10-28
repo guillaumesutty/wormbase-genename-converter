@@ -193,6 +193,7 @@
     background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 9px 12px;
     outline: none; transition: border-color 0.2s, background 0.2s;
   }
+  input::placeholder { color: var(--text-faint); opacity: 1; }
   input[type=text]:focus, input[type=number]:focus { border-color: var(--accent-mid); background: var(--surface); }
   .unit { position: relative; }
   .unit input { padding-right: 38px; }
@@ -332,7 +333,7 @@
         <div class="panel-body">
           <div class="field">
             <label class="field-label" for="gene">Gene <span style="color: grey;">(WormBase ID, gene name or systematic name)</span></label>
-            <input id="gene" type="text" value="WBGene00004510" autocomplete="off" spellcheck="false">
+            <input id="gene" type="text" placeholder="rrf-3" autocomplete="off" spellcheck="false">
           </div>
           <div class="row">
             <div class="field">
