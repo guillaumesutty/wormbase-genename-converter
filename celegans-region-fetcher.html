@@ -486,7 +486,14 @@ async function fetchRegion(opts){
       try { proteins[t.id] = (await getJSON(`/sequence/id/${encodeURIComponent(t.id)}?type=protein`)).seq; } catch(e){ /* annotation without translation */ }
     }));
   }
-  return { g, reg, seq, txs, proteins };
+  let neighbours = [];
+  if (opts.format === "genbank"){
+    try {
+      const ov = await getJSON(`/overlap/region/${SPECIES}/${reg.chr}:${reg.start}-${reg.end}?feature=gene`);
+      neighbours = ov.filter(x => x.id !== g.id);
+    } catch(e){ if (e.network) throw e; }
+  }
+  return { g, reg, seq, txs, proteins, neighbours };
 }
 
 function geneLabel(g){ return g.display_name || g.id; }
@@ -543,7 +550,7 @@ function gbDate(d = new Date()){
 }
 
 function buildGenBank(d){
-  const { g, reg, seq, txs, proteins } = d;
+  const { g, reg, seq, txs, proteins, neighbours = [] } = d;
   const L = seq.length;
   const pos = x => reg.orient === 1 ? x - reg.start + 1 : reg.end - x + 1;
   const span = (a, b) => { const p = pos(a), q = pos(b); return [Math.min(p, q), Math.max(p, q)]; };
@@ -559,6 +566,9 @@ function buildGenBank(d){
   let out = "";
   out += "LOCUS".padEnd(12) + locusName.padEnd(16) + " " + String(L).padStart(11) + " bp    " + "DNA".padEnd(8) + "linear".padEnd(9) + "INV " + gbDate() + "\n";
   out += gbField("DEFINITION", `Caenorhabditis elegans ${sym} (${g.id}) genomic region ${reg.chr}:${reg.start}-${reg.end}, ${strandWord} strand, with ${reg.f5} bp 5' and ${reg.f3} bp 3' flanking sequence.`);
+  const acc = `chromosome:${g.assembly_name || "WBcel235"}:${reg.chr}:${reg.start}:${reg.end}:${reg.orient}`;
+  out += "ACCESSION   " + acc + "\n";
+  out += "VERSION     " + acc + "\n";
   out += "KEYWORDS    .\n";
   out += "SOURCE      Caenorhabditis elegans\n";
   out += "  ORGANISM  Caenorhabditis elegans\n";
@@ -568,7 +578,7 @@ function buildGenBank(d){
   out += gbField("COMMENT", `Retrieved from the Ensembl REST API (rest.ensembl.org) on ${new Date().toISOString().slice(0,10)}. Assembly ${g.assembly_name || "WBcel235"}, chromosome ${reg.chr}:${reg.start}-${reg.end}, ${strandWord} strand. Feature coordinates are relative to this sequence.${reg.notes.length ? " " + reg.notes.join(" ") : ""}`);
   out += "FEATURES             Location/Qualifiers\n";
   out += gbFeature("source", `1..${L}`, [["organism","Caenorhabditis elegans"],["mol_type","genomic DNA"],["chromosome",reg.chr],["db_xref","taxon:6239"]]);
-  const geneQ = [["gene", sym], ["locus_tag", g.id]];
+  const geneQ = [["gene", sym], ["label", sym], ["locus_tag", g.id], ["db_xref", "WormBase:" + g.id]];
   if (g.description) geneQ.push(["note", g.description.replace(/\s*\[Source:.*\]$/, "")]);
   if (g.biotype) geneQ.push(["note", "biotype: " + g.biotype]);
   out += gbFeature("gene", loc([[g.start, g.end]], g.strand), geneQ);
@@ -578,17 +588,39 @@ function buildGenBank(d){
     if (!exons.length) continue;
     const tname = t.display_name || t.id;
     const isCoding = !!t.Translation;
-    const rnaQ = [["gene", sym], ["transcript_id", t.id]];
+    const rnaQ = [["gene", sym], ["label", tname], ["transcript_id", t.id]];
     if (!isCoding) rnaQ.push(["note", "biotype: " + t.biotype]);
     if (t.is_canonical) rnaQ.push(["note", "Ensembl canonical transcript"]);
     out += gbFeature(isCoding ? "mRNA" : "misc_RNA", loc(exons, t.strand), rnaQ);
     if (isCoding){
       const a = t.Translation.start, b = t.Translation.end;
       const cds = exons.map(([s, e]) => [Math.max(s, a), Math.min(e, b)]).filter(([s, e]) => s <= e);
-      const q = [["gene", sym], ["codon_start", 1], ["product", tname], ["protein_id", t.Translation.id]];
+      const q = [["gene", sym], ["label", `${sym} CDS`], ["codon_start", 1], ["product", tname], ["protein_id", t.Translation.id]];
       if (proteins[t.id]) q.push(["translation", proteins[t.id].replace(/\*$/, "")]);
       out += gbFeature("CDS", loc(cds, t.strand), q);
+      // UTRs: exon parts outside the coding range, named in transcript direction
+      const before = exons.map(([s, e]) => [s, Math.min(e, a - 1)]).filter(([s, e]) => s <= e);
+      const after  = exons.map(([s, e]) => [Math.max(s, b + 1), e]).filter(([s, e]) => s <= e);
+      const utr5 = t.strand === 1 ? before : after, utr3 = t.strand === 1 ? after : before;
+      if (utr5.length) out += gbFeature("5'UTR", loc(utr5, t.strand), [["gene", sym], ["label", `${sym} 5'UTR`], ["note", tname + " 5' UTR"]]);
+      if (utr3.length) out += gbFeature("3'UTR", loc(utr3, t.strand), [["gene", sym], ["label", `${sym} 3'UTR`], ["note", tname + " 3' UTR"]]);
     }
+    // Exons as single-range features, numbered in transcript direction
+    const ordered = exons.slice().sort((x, y) => t.strand === 1 ? x[0] - y[0] : y[0] - x[0]);
+    ordered.forEach(([s, e], i) => {
+      out += gbFeature("exon", loc([[s, e]], t.strand), [["gene", sym], ["number", i + 1], ["label", `exon ${i + 1}`]]);
+    });
+  }
+
+  // Other genes overlapping the region (clipped to it)
+  for (const n of neighbours){
+    const s = Math.max(n.start, reg.start), e = Math.min(n.end, reg.end);
+    if (s > e) continue;
+    const name = n.external_name || n.gene_id || n.id;
+    const q = [["gene", name], ["label", name], ["db_xref", "WormBase:" + n.id]];
+    if (n.biotype) q.push(["note", "biotype: " + n.biotype]);
+    if (n.start < reg.start || n.end > reg.end) q.push(["note", `full gene ${n.seq_region_name || reg.chr}:${n.start}-${n.end}; partial in this region`]);
+    out += gbFeature("gene", loc([[s, e]], n.strand), q);
   }
 
   out += "ORIGIN\n";
