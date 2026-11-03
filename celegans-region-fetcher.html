@@ -480,11 +480,31 @@
 const REST = "https://rest.ensembl.org";
 const SPECIES = "caenorhabditis_elegans";
 
+// Network errors, rate limiting (429) and server errors (5xx) are retried with backoff;
+// other HTTP errors are final (the gene lookup relies on 400/404 meaning "not found").
+const RETRIES = 3;
+let onRetry = null; // set by the UI: (attempt, max, delayMs) => void
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+
 async function getJSON(path){
   const url = REST + path + (path.includes("?") ? ";" : "?") + "content-type=application/json";
   let r;
-  try { r = await fetch(url); }
-  catch(e){ const err = new Error("Couldn't reach rest.ensembl.org. Check your internet connection, and open this file directly in your browser (not inside a preview)."); err.network = true; throw err; }
+  for (let attempt = 0; ; attempt++){
+    let wait = 1000 * 2 ** attempt;
+    try { r = await fetch(url); }
+    catch(e){
+      if (attempt < RETRIES){ if (onRetry) onRetry(attempt + 1, RETRIES, wait); await sleep(wait); continue; }
+      const err = new Error("Couldn't reach rest.ensembl.org. Check your internet connection, and open this file directly in your browser (not inside a preview)."); err.network = true; throw err;
+    }
+    if ((r.status === 429 || r.status >= 500) && attempt < RETRIES){
+      const ra = parseFloat(r.headers.get("Retry-After"));
+      if (ra > 0) wait = Math.min(ra * 1000, 30000);
+      if (onRetry) onRetry(attempt + 1, RETRIES, wait);
+      await sleep(wait);
+      continue;
+    }
+    break;
+  }
   if (r.status === 429) throw new Error("Ensembl is rate-limiting requests. Wait a few seconds and try again.");
   if (!r.ok){
     let msg = "Ensembl returned HTTP " + r.status;
@@ -878,7 +898,7 @@ async function showVariants(g){
       if (a.hasVariant){
         const btn = document.createElement("button");
         btn.type = "button"; btn.className = "icon-btn"; btn.textContent = "Get sequence";
-        btn.addEventListener("click", () => openSeqDialog(a));
+        btn.addEventListener("click", () => openSeqDialog(a, geneLabel(g)));
         li.append(btn);
       }
       return li;
@@ -890,7 +910,7 @@ async function showVariants(g){
 }
 
 let seqReq = 0, seqText = "", seqFasta = "", seqBase = "";
-async function openSeqDialog(a){
+async function openSeqDialog(a, gene){
   const req = ++seqReq;
   const body = $("seq-body"), msg = document.createElement("p");
   $("seq-title").replaceChildren(document.createElement("em"));
@@ -898,7 +918,7 @@ async function openSeqDialog(a){
   $("seq-link").href = `${ALLIANCE}/allele/${a.id}`;
   $("seq-copy").disabled = $("seq-txt").disabled = $("seq-fasta").disabled = true;
   seqText = seqFasta = "";
-  seqBase = `${a.name}_${a.id.replace(/^WB:/, "")}`.replace(/[^A-Za-z0-9._-]/g, "_");
+  seqBase = `${gene}_${a.name}`.replace(/[^A-Za-z0-9._-]/g, "_");
   msg.className = "variants-msg"; msg.textContent = "Loading from alliancegenome.org…";
   body.replaceChildren(msg);
   $("seq-dialog").showModal();
@@ -957,6 +977,7 @@ $("form").addEventListener("submit", async ev => {
       orient: $("or-gene").checked ? "gene" : "forward",
     };
     btn.disabled = true; $("status").textContent = "Fetching from Ensembl…";
+    onRetry = (n, max, ms) => { $("status").textContent = `Ensembl request failed, retrying in ${Math.round(ms / 1000)} s (${n}/${max})…`; };
     const d = await fetchRegion(opts);
     const text = { genbank: buildGenBank, txt: buildText }[opts.format]?.(d) ?? buildFasta(d);
     const name = fileName(d, opts.format);
@@ -971,6 +992,7 @@ $("form").addEventListener("submit", async ev => {
     $("error-box").hidden = false;
   } finally {
     btn.disabled = false;
+    onRetry = null;
   }
 });
 
