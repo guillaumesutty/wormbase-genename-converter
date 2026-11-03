@@ -42,7 +42,7 @@ Sequence and annotation are fetched live from the [Ensembl REST API](https://res
 - Text files (`.txt`) contain only the raw DNA sequence on a single line, with no header
 - GenBank files are annotated with the gene, its transcripts (mRNA / misc_RNA) and CDS with protein translations
 - Region summary, gene map and file preview before saving; copy to clipboard or save again
-- Link to the gene's known alleles & variants on the [Alliance of Genome Resources](https://www.alliancegenome.org), with the top 3 alleles (phenotype-annotated first)
+- Link to the gene's known alleles & variants on the [Alliance of Genome Resources](https://www.alliancegenome.org), with the top 3 alleles (phenotype-annotated first); **Get sequence** opens a popup with the variant's reference > variant sequence, which can be copied or saved as TXT or FASTA
 
 ## Mapping table
 

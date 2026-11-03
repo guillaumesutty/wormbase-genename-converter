@@ -274,6 +274,22 @@
   .allele-list .allele-name { font-style: italic; font-weight: 500; }
   .allele-tags { font-size: 10px; color: var(--text-muted); letter-spacing: 0.04em; }
   .variants-msg { font-family: var(--mono); font-size: 11px; color: var(--text-faint); font-style: italic; }
+  .allele-list .icon-btn { height: 22px; padding: 0 8px; margin-left: auto; }
+
+  /* Variant sequence popup */
+  .seq-dialog {
+    margin: auto; width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 48px);
+    background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+    box-shadow: var(--shadow-lg); padding: 0; overflow: hidden;
+  }
+  .seq-dialog[open] { display: flex; flex-direction: column; }
+  .seq-dialog::backdrop { background: rgba(28,28,26,0.35); }
+  .seq-dialog .panel-body { min-height: 0; overflow: auto; }
+  .seq-dialog h2 { font-family: var(--serif); font-weight: 400; font-size: 20px; line-height: 1.2; }
+  .seq-dialog h2 em { color: var(--accent); }
+  .seq-dialog pre { white-space: pre-wrap; word-break: break-all; }
+  .seq-variant { display: grid; gap: 10px; min-width: 0; }
+  .seq-variant + .seq-variant { padding-top: 16px; border-top: 1px dashed var(--border); }
   .preview-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); }
   pre {
     background: var(--accent-pale); color: var(--accent); border: 1px solid var(--border); border-radius: 3px;
@@ -429,6 +445,25 @@
     <div class="error-heading">⚠ Could not fetch the region</div>
     <div id="error"></div>
   </div>
+
+  <dialog class="seq-dialog" id="seq-dialog" aria-labelledby="seq-title">
+    <div class="panel-head">
+      <span class="panel-label">Variant sequence</span>
+      <button type="button" class="icon-btn" id="seq-close">✕ Close</button>
+    </div>
+    <div class="panel-body">
+      <h2 id="seq-title"></h2>
+      <div id="seq-body"></div>
+    </div>
+    <div class="panel-foot">
+      <a class="footer-link" id="seq-link" target="_blank" rel="noopener">View on Alliance ↗</a>
+      <div class="foot-btns">
+        <button type="button" class="icon-btn" id="seq-copy" disabled>⎘ Copy</button>
+        <button type="button" class="icon-btn" id="seq-txt" disabled>↓ TXT</button>
+        <button type="button" class="icon-btn" id="seq-fasta" disabled>↓ FASTA</button>
+      </div>
+    </div>
+  </dialog>
 
   <footer>
     <span class="footer-note">Sequence and annotation from the Ensembl REST API · assembly WBcel235 · alleles from the Alliance of Genome Resources</span>
@@ -681,8 +716,50 @@ async function fetchAlleles(geneId){
       name: name(r),
       type: r.variantList && r.variantList[0] && r.variantList[0].variantType ? r.variantList[0].variantType.name.replace(/_/g, " ") : "",
       phenotype: r.hasPhenotype, disease: r.hasDisease,
+      hasVariant: !!(r.variantList && r.variantList.length),
     })),
   };
+}
+
+// Same notation as the Alliance variant page: padded base + REF > padded base + ALT
+function variantSeqString(l){
+  const p = (l.paddedBase || "").toLowerCase(), ref = l.referenceSequence || "", alt = l.variantSequence || "";
+  return ref || alt ? `${p}${ref}>${p}${alt}` : "";
+}
+
+async function fetchVariantSequences(alleleId){
+  const r = await fetch(`${ALLIANCE}/api/allele/${alleleId}/variants`);
+  if (!r.ok) throw new Error("Alliance returned HTTP " + r.status);
+  const out = [];
+  for (const res of (await r.json()).results || []){
+    for (const v of res.variantList || []){
+      for (const l of v.curatedVariantGenomicLocations || []){
+        const chr = l.variantGenomicLocationAssociationObject && l.variantGenomicLocationAssociationObject.name;
+        out.push({
+          type: v.variantType ? v.variantType.name.replace(/_/g, " ") : "",
+          chr, start: l.start, end: l.end, hgvs: l.hgvs || "",
+          ref: l.referenceSequence || "", alt: l.variantSequence || "",
+          seq: variantSeqString(l),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// One record for the reference bases, one for the variant bases (when there are any)
+function buildVariantFasta(allele, vars){
+  const id = allele.id.replace(/^WB:/, "");
+  const lines = [];
+  vars.forEach((v, i) => {
+    const tag = vars.length > 1 ? `_${i + 1}` : "";
+    const desc = `${id} ${v.type || "variant"} ${v.chr}:${v.start}-${v.end} ${v.hgvs}`.trim();
+    for (const [kind, s] of [["ref", v.ref], ["alt", v.alt]]){
+      if (!s) continue;
+      lines.push(`>${allele.name}${tag}_${kind} ${desc}`, ...chunk(s, 60));
+    }
+  });
+  return lines.join("\n") + "\n";
 }
 
 function fileName(d, format){
@@ -798,6 +875,12 @@ async function showVariants(g){
       tags.className = "allele-tags";
       tags.textContent = [a.type, a.phenotype && "phenotype", a.disease && "disease model"].filter(Boolean).join(" · ");
       li.append(link, tags);
+      if (a.hasVariant){
+        const btn = document.createElement("button");
+        btn.type = "button"; btn.className = "icon-btn"; btn.textContent = "Get sequence";
+        btn.addEventListener("click", () => openSeqDialog(a));
+        li.append(btn);
+      }
       return li;
     }));
     msg.textContent = top.length ? "" : "No alleles listed for this gene.";
@@ -805,6 +888,61 @@ async function showVariants(g){
     if (req === variantsReq) msg.textContent = "Couldn't load alleles from alliancegenome.org. Use the link above.";
   }
 }
+
+let seqReq = 0, seqText = "", seqFasta = "", seqBase = "";
+async function openSeqDialog(a){
+  const req = ++seqReq;
+  const body = $("seq-body"), msg = document.createElement("p");
+  $("seq-title").replaceChildren(document.createElement("em"));
+  $("seq-title").firstChild.textContent = a.name;
+  $("seq-link").href = `${ALLIANCE}/allele/${a.id}`;
+  $("seq-copy").disabled = $("seq-txt").disabled = $("seq-fasta").disabled = true;
+  seqText = seqFasta = "";
+  seqBase = `${a.name}_${a.id.replace(/^WB:/, "")}`.replace(/[^A-Za-z0-9._-]/g, "_");
+  msg.className = "variants-msg"; msg.textContent = "Loading from alliancegenome.org…";
+  body.replaceChildren(msg);
+  $("seq-dialog").showModal();
+  try {
+    const vars = (await fetchVariantSequences(a.id)).filter(v => v.seq);
+    if (req !== seqReq) return;
+    if (!vars.length){ msg.textContent = "Alliance has no sequence for this variant."; return; }
+    body.replaceChildren(...vars.map(v => {
+      const box = document.createElement("div"); box.className = "seq-variant";
+      const facts = document.createElement("dl"); facts.className = "facts";
+      const rows = [
+        ["Type", v.type || "—"],
+        ["Location", `${v.chr}:${fmt(v.start)}-${fmt(v.end)}`],
+        ["Length", `${fmt(v.ref.length)} bp → ${fmt(v.alt.length)} bp`],
+        ["HGVS", v.hgvs],
+      ];
+      for (const [k, val] of rows){
+        const div = document.createElement("div");
+        if (k === "HGVS") div.className = "wide";
+        const dt = document.createElement("dt"); dt.textContent = k;
+        const dd = document.createElement("dd"); dd.textContent = val;
+        div.append(dt, dd); facts.append(div);
+      }
+      const pre = document.createElement("pre"); pre.textContent = v.seq;
+      box.append(facts, pre);
+      return box;
+    }));
+    seqText = vars.map(v => v.seq).join("\n");
+    seqFasta = buildVariantFasta(a, vars);
+    $("seq-copy").disabled = $("seq-txt").disabled = $("seq-fasta").disabled = false;
+  } catch(e){
+    if (req === seqReq) msg.textContent = "Couldn't load the sequence from alliancegenome.org. Use the link below.";
+  }
+}
+$("seq-close").addEventListener("click", () => $("seq-dialog").close());
+$("seq-txt").addEventListener("click", () => { if (seqText) saveFile(seqText + "\n", seqBase + ".txt"); });
+$("seq-fasta").addEventListener("click", () => { if (seqFasta) saveFile(seqFasta, seqBase + ".fa"); });
+$("seq-dialog").addEventListener("click", ev => { if (ev.target === $("seq-dialog")) $("seq-dialog").close(); });
+$("seq-copy").addEventListener("click", async () => {
+  if (!seqText) return;
+  try { await navigator.clipboard.writeText(seqText); $("seq-copy").textContent = "✓ Copied"; $("seq-copy").classList.add("success"); }
+  catch(_){ $("seq-copy").textContent = "Copy failed"; }
+  setTimeout(() => { $("seq-copy").textContent = "⎘ Copy"; $("seq-copy").classList.remove("success"); }, 1500);
+});
 
 $("form").addEventListener("submit", async ev => {
   ev.preventDefault();
