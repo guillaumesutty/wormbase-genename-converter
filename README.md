@@ -3,7 +3,7 @@
 Two lightweight, single-file web tools for *Caenorhabditis elegans* genes, linked by a small nav bar at the top of each page:
 
 - **Gene ID Converter** (`index.html`): convert between **WormBase Gene IDs**, **Public Names**, **Sequence Names**, and **Entrez Gene IDs**.
-- **Region Fetcher** (`celegans-region-fetcher.html`): download a gene with its flanking genomic sequence as **FASTA** or annotated **GenBank**.
+- **Region Fetcher** (`celegans-region-fetcher.html`): download a gene with its flanking genomic sequence as **FASTA**, annotated **GenBank** or raw **text**.
 
 ---
 
@@ -19,7 +19,7 @@ The mapping table is loaded automatically from the local CSV file on page load.
 
 ### Region Fetcher
 
-1. Choose the **file type** (FASTA or GenBank) and **orientation** (gene strand or genome + strand).
+1. Choose the **file type** (FASTA, GenBank or Text) and **orientation** (gene strand or genome + strand).
 2. Enter a gene (WormBase ID, gene name or sequence name) and the 5′ / 3′ flank lengths in bp, then click **Download**.
 
 Sequence and annotation are fetched live from the [Ensembl REST API](https://rest.ensembl.org) (assembly WBcel235), so an internet connection is required.
@@ -39,8 +39,10 @@ Sequence and annotation are fetched live from the [Ensembl REST API](https://res
 - Accepts WormBase IDs (`WBGene…`), gene names (`rrf-3`) or sequence names (`F10B5.7`)
 - Adjustable upstream / downstream flanks, with quick presets (0, 500 bp, 1, 2, 5 kb)
 - Output on the gene strand or the genome + strand
+- Text files (`.txt`) contain only the raw DNA sequence on a single line, with no header
 - GenBank files are annotated with the gene, its transcripts (mRNA / misc_RNA) and CDS with protein translations
 - Region summary, gene map and file preview before saving; copy to clipboard or save again
+- Link to the gene's known alleles & variants on the [Alliance of Genome Resources](https://www.alliancegenome.org), with the top 3 alleles (phenotype-annotated first)
 
 ## Mapping table
 

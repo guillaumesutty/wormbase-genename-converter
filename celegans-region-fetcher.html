@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>C. elegans Region Fetcher</title>
-<meta name="description" content="Download a C. elegans gene with flanking genomic sequence from Ensembl as FASTA or annotated GenBank.">
+<meta name="description" content="Download a C. elegans gene with flanking genomic sequence from Ensembl as FASTA, annotated GenBank or raw text.">
 <link rel="icon" type="image/x-icon" href="favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -264,6 +264,16 @@
     font-size: 12px; color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-border);
     border-radius: 3px; padding: 7px 11px;
   }
+  .variants { display: grid; gap: 7px; min-width: 0; }
+  .variants-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; }
+  .variants a { color: var(--accent-mid); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.2s; }
+  .variants a:hover { border-color: var(--accent); }
+  .variants-all { font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; }
+  .allele-list { list-style: none; display: grid; gap: 5px; }
+  .allele-list li { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; }
+  .allele-list .allele-name { font-style: italic; font-weight: 500; }
+  .allele-tags { font-size: 10px; color: var(--text-muted); letter-spacing: 0.04em; }
+  .variants-msg { font-family: var(--mono); font-size: 11px; color: var(--text-faint); font-style: italic; }
   .preview-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); }
   pre {
     background: var(--accent-pale); color: var(--accent); border: 1px solid var(--border); border-radius: 3px;
@@ -315,7 +325,7 @@
     <div>
       <div class="header-eyebrow">Ensembl · Genomic Region Tool</div>
       <h1>Region Fetcher<br><em>C. elegans</em></h1>
-      <div class="header-meta">Download a gene with its flanking genomic sequence as FASTA or annotated GenBank</div>
+      <div class="header-meta">Download a gene with its flanking genomic sequence as FASTA, annotated GenBank or raw text</div>
     </div>
     <div class="header-badge">
       <div class="organism-tag">Caenorhabditis elegans</div>
@@ -358,6 +368,7 @@
               <div class="dir-segment">
                 <label class="dir-btn"><input type="radio" name="fmt" id="fmt-fasta" value="fasta" checked>FASTA</label>
                 <label class="dir-btn"><input type="radio" name="fmt" id="fmt-gb" value="genbank">GenBank</label>
+                <label class="dir-btn"><input type="radio" name="fmt" id="fmt-txt" value="txt">Text</label>
               </div>
             </fieldset>
             <fieldset class="format-block">
@@ -386,6 +397,14 @@
               <div class="map-labels" id="map-labels"></div>
             </div>
             <div class="note" id="r-notes" hidden></div>
+            <div class="variants">
+              <div class="variants-head">
+                <span class="preview-label">Known alleles &amp; variants</span>
+                <a class="variants-all" id="var-all" target="_blank" rel="noopener"></a>
+              </div>
+              <ul class="allele-list" id="var-list"></ul>
+              <span class="variants-msg" id="var-msg"></span>
+            </div>
             <span class="preview-label" id="pv-label">Preview</span>
             <pre id="preview"></pre>
           </div>
@@ -412,7 +431,7 @@
   </div>
 
   <footer>
-    <span class="footer-note">Sequence and annotation from the Ensembl REST API · assembly WBcel235</span>
+    <span class="footer-note">Sequence and annotation from the Ensembl REST API · assembly WBcel235 · alleles from the Alliance of Genome Resources</span>
     <div class="footer-links">
       <a class="footer-link" href="https://github.com/guillaumesutty/wormbase-genename-converter" target="_blank" rel="noopener">Guillaume SUTTY (Github) ↗</a>
       <a class="footer-link" href="https://www.ensembl.org/Caenorhabditis_elegans/" target="_blank" rel="noopener">ensembl.org ↗</a>
@@ -506,6 +525,9 @@ function buildFasta(d){
   for (let i = 0; i < seq.length; i += 60) lines.push(seq.slice(i, i + 60));
   return lines.join("\n") + "\n";
 }
+
+// Raw sequence only: no header, no line breaks
+function buildText(d){ return d.seq + "\n"; }
 
 /* GenBank helpers */
 function chunk(s, n){ const o = []; for (let i = 0; i < s.length; i += n) o.push(s.slice(i, i + n)); return o.length ? o : [""]; }
@@ -633,10 +655,40 @@ function buildGenBank(d){
   return out;
 }
 
+/* Alliance of Genome Resources: known alleles & variants */
+const ALLIANCE = "https://www.alliancegenome.org";
+function allianceGeneUrl(id){ return `${ALLIANCE}/gene/WB:${id}#alleles-and-variants`; }
+
+async function fetchAlleles(geneId){
+  const get = async q => {
+    const r = await fetch(`${ALLIANCE}/api/gene/WB:${encodeURIComponent(geneId)}/alleles?${q}`);
+    if (!r.ok) throw new Error("Alliance returned HTTP " + r.status);
+    return r.json();
+  };
+  const [all, pheno] = await Promise.all([get("limit=100"), get("limit=50&filter.hasPhenotype=true")]);
+  const name = r => (r.allele.alleleSymbol && r.allele.alleleSymbol.displayText) || r.allele.curie;
+  // Rank: phenotype-annotated first, then disease models, mapped molecular change, and named alleles over bare WBVar IDs
+  const score = r => (r.hasPhenotype ? 8 : 0) + (r.hasDisease ? 4 : 0) + (r.variantList && r.variantList.length ? 2 : 0) + (/^WBVar\d/.test(name(r)) ? 0 : 1);
+  const seen = new Set(), picks = [];
+  for (const r of [...pheno.results, ...all.results].filter(r => r.category === "allele_summary").sort((a, b) => score(b) - score(a))){
+    if (seen.has(r.allele.curie)) continue;
+    seen.add(r.allele.curie); picks.push(r);
+  }
+  return {
+    total: all.total,
+    top: picks.slice(0, 3).map(r => ({
+      id: r.allele.primaryExternalId || r.allele.curie,
+      name: name(r),
+      type: r.variantList && r.variantList[0] && r.variantList[0].variantType ? r.variantList[0].variantType.name.replace(/_/g, " ") : "",
+      phenotype: r.hasPhenotype, disease: r.hasDisease,
+    })),
+  };
+}
+
 function fileName(d, format){
   const { g, reg } = d;
   const base = `${geneLabel(g)}_${reg.chr}_${reg.start}-${reg.end}_${reg.orient === 1 ? "plus" : "minus"}_5p${reg.f5}_3p${reg.f3}`.replace(/[^A-Za-z0-9._-]/g, "_");
-  return base + (format === "genbank" ? ".gb" : ".fa");
+  return base + ({ genbank: ".gb", txt: ".txt" }[format] || ".fa");
 }
 </script>
 
@@ -714,7 +766,8 @@ function showResult(d, text, name, format){
   $("r-notes").hidden = !reg.notes.length;
   $("r-notes").textContent = reg.notes.join(" ");
   drawMap(d);
-  const lines = text.split("\n");
+  // The text file is one long line; wrap it at 60 bp for the preview only
+  const lines = format === "txt" ? chunk(d.seq, 60) : text.split("\n");
   const max = format === "genbank" ? 60 : 20;
   $("pv-label").textContent = lines.length > max + 1 ? `Preview · first ${max} lines` : "Preview";
   $("preview").textContent = lines.slice(0, max).join("\n") + (lines.length > max + 1 ? "\n…" : "");
@@ -722,6 +775,35 @@ function showResult(d, text, name, format){
   $("empty").hidden = true;
   $("file-count").textContent = `${name} · ${fmt(text.length)} bytes`;
   $("copy").disabled = $("again").disabled = false;
+}
+
+let variantsReq = 0;
+async function showVariants(g){
+  const req = ++variantsReq;
+  const all = $("var-all"), list = $("var-list"), msg = $("var-msg");
+  all.href = allianceGeneUrl(g.id);
+  all.textContent = "All on Alliance ↗";
+  list.replaceChildren();
+  msg.textContent = "Loading from alliancegenome.org…";
+  try {
+    const { total, top } = await fetchAlleles(g.id);
+    if (req !== variantsReq) return;
+    if (total) all.textContent = `All ${fmt(total)} on Alliance ↗`;
+    list.replaceChildren(...top.map(a => {
+      const li = document.createElement("li");
+      const link = document.createElement("a");
+      link.className = "allele-name"; link.href = `${ALLIANCE}/allele/${a.id}`;
+      link.target = "_blank"; link.rel = "noopener"; link.textContent = a.name;
+      const tags = document.createElement("span");
+      tags.className = "allele-tags";
+      tags.textContent = [a.type, a.phenotype && "phenotype", a.disease && "disease model"].filter(Boolean).join(" · ");
+      li.append(link, tags);
+      return li;
+    }));
+    msg.textContent = top.length ? "" : "No alleles listed for this gene.";
+  } catch(e){
+    if (req === variantsReq) msg.textContent = "Couldn't load alleles from alliancegenome.org. Use the link above.";
+  }
 }
 
 $("form").addEventListener("submit", async ev => {
@@ -733,16 +815,17 @@ $("form").addEventListener("submit", async ev => {
       gene: $("gene").value,
       f5: readFlank("f5", "5′ flank"),
       f3: readFlank("f3", "3′ flank"),
-      format: $("fmt-gb").checked ? "genbank" : "fasta",
+      format: document.querySelector("input[name=fmt]:checked").value,
       orient: $("or-gene").checked ? "gene" : "forward",
     };
     btn.disabled = true; $("status").textContent = "Fetching from Ensembl…";
     const d = await fetchRegion(opts);
-    const text = opts.format === "genbank" ? buildGenBank(d) : buildFasta(d);
+    const text = { genbank: buildGenBank, txt: buildText }[opts.format]?.(d) ?? buildFasta(d);
     const name = fileName(d, opts.format);
     last = { text, name };
     saveFile(text, name);
     showResult(d, text, name, opts.format);
+    showVariants(d.g);
     $("status").textContent = `✓ Saved ${name}`;
   } catch (e){
     $("status").textContent = "";
@@ -753,7 +836,7 @@ $("form").addEventListener("submit", async ev => {
   }
 });
 
-function syncPill(){ $("fmt-pill").textContent = $("fmt-gb").checked ? "GenBank" : "FASTA"; }
+function syncPill(){ $("fmt-pill").textContent = $("fmt-gb").checked ? "GenBank" : $("fmt-txt").checked ? "Text" : "FASTA"; }
 document.querySelectorAll("input[name=fmt]").forEach(r => r.addEventListener("change", syncPill));
 syncPill();
 
